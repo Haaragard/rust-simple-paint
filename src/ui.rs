@@ -202,3 +202,26 @@ impl Renderer {
         canvas.present();
     }
 }
+
+// fn draw_on_mouse_button_clicked(app_state: &AppState) {
+//     let mut canvas = app_state.canvas.borrow_mut();
+
+//     if app_state.mouse_pressed {
+//         let center = Rect::from_center(
+//             app_state.mouse_position.clone(),
+//             10,
+//             10
+//         );
+
+//         canvas.set_draw_color(Color::RGB(0, 0, 255));
+//         let radius = 10;
+//         let r2 = radius * radius;
+//         for dy in -radius..=radius {
+//             let dx = ((r2 - dy * dy) as f64).sqrt() as i32;
+//             let y = center.y + dy;
+//             let x1 = center.x - dx;
+//             let x2 = center.x + dx;
+//             canvas.draw_line(Point::new(x1, y), Point::new(x2, y)).unwrap();
+//         }
+//     }
+// }
