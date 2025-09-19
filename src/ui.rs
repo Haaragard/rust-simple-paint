@@ -1,42 +1,60 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-use sdl2::{pixels::{Color, PixelFormatEnum}, rect::{Rect}, render::{Canvas, Texture, TextureCreator}, video::{Window, WindowContext}};
+use sdl2::{pixels::{Color, PixelFormatEnum}, rect::{Point, Rect}, render::{Canvas, Texture, TextureCreator}, video::{Window, WindowContext}};
 
-// #[derive(Clone, Copy)]
-// pub struct Input {
-//     pub mouse_pos: Point,
-//     pub mouse_down_edge: bool,
-//     pub mouse_up_edge: bool,
-//     pub mouse_held: bool,
-// }
+use crate::app::Input;
 
-// impl Default for Input {
-//     fn default() -> Self {
-//         Self {
-//             mouse_pos: Point::new(0, 0),
-//             mouse_down_edge: false,
-//             mouse_up_edge: false,
-//             mouse_held: false,
-//         }
-//     }
-// }
+pub struct TextureManager<'tc> {
+    texture_creator: &'tc TextureCreator<WindowContext>,
+    cache: HashMap<String, Texture<'tc>>,
+}
 
-// pub enum UiEvent {
-//     ButtonClicked(Rc<RefCell<dyn Component>>),
-// }
+impl<'tc> TextureManager<'tc> {
+    pub fn new(texture_creator: &'tc TextureCreator<WindowContext>) -> Self {
+        Self {
+            texture_creator,
+            cache: HashMap::new(),
+        }
+    }
 
-#[derive(Default)]
+    pub fn get_texture(&mut self, key: &str) -> Option<&Texture<'tc>> {
+        self.cache.get(key)
+    }
+
+    pub fn create_texture(&mut self, key: &str, width: u32, height: u32, canvas: &mut Canvas<Window>) -> &Texture<'tc> {
+        let mut texture = self.texture_creator
+            .create_texture_target(PixelFormatEnum::RGBA8888, width, height)
+            .expect("failed to create texture");
+
+        canvas.with_texture_canvas(&mut texture, |tc| {
+            tc.set_draw_color(Color::RGB(255, 0, 0));
+            tc.clear();
+            tc.set_draw_color(Color::RGB(0, 0, 0));
+            tc.draw_rect(Rect::new(0, 0, width, height)).unwrap();
+        }).expect("failed to render");
+
+        self.cache.insert(key.to_string(), texture);
+        self.cache.get(key).unwrap()
+    }
+
+    pub fn drop_texture(&mut self, key: &str) {
+        self.cache.remove(key);
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy)]
 pub struct ComponentProperty {
     pub x: i32,
     pub y: i32,
-
     pub height: u32,
     pub width: u32,
 }
 
+#[derive(Debug, Clone, Copy)]
 pub struct ComponentState {
     pub is_enabled: bool,
     pub is_dirty: bool,
+    pub is_focused: bool,
 }
 
 impl Default for ComponentState {
@@ -44,184 +62,147 @@ impl Default for ComponentState {
         Self {
             is_enabled: true,
             is_dirty: true,
+            is_focused: false,
         }
     }
 }
 
 pub trait Component {
-    fn update(&mut self, canvas: &mut Canvas<Window>);
-    fn render(&self, canvas: &mut Canvas<Window>);
+    fn update(&mut self, input: Input);
+    fn get_id(&self) -> &str;
+    fn get_props(&self) -> ComponentProperty;
+    fn get_state(&self) -> ComponentState;
+    fn get_bounds(&self) -> Rect;
 }
 
-// pub trait HoverComponent {
-//     fn on_hover(&self);
-// }
-
-// pub trait SelectComponent {
-//     fn on_select(&self);
-// }
-
-pub struct Button<'tc> {
-    _texture_creator: Option<&'tc TextureCreator<WindowContext>>,
-    pub prop: ComponentProperty,
+#[derive(Debug)]
+pub struct Button {
+    id: String,
     state: ComponentState,
-    texture: Option<Texture<'tc>>,
-    rect: Option<Rect>,
+    prop: ComponentProperty,
+    boundary: Rect,
 }
 
-impl<'tc> Default for Button<'tc> {
+impl Default for Button {
     fn default() -> Self {
-        Self {
-            _texture_creator: None,
-            prop: ComponentProperty::default(),
-            state: ComponentState::default(),
-            texture: None,
-            rect: None,
-        }
+        let id = format!("BUTTON-{}", ulid::Ulid::new());
+        let state = ComponentState::default();
+        let prop = ComponentProperty::default();
+        let boundary = Rect::new(
+            prop.x,
+            prop.y,
+            prop.width,
+            prop.height
+        );
+
+        Self { id, state, prop, boundary }
     }
 }
 
-impl<'tc> Component for Button<'tc> {
-    fn update(&mut self, canvas: &mut Canvas<Window>) {
-        self.build(canvas);
+impl Component for Button {
+    fn update(&mut self, input: Input) {
+        // self.state.is_dirty = false;
+
+        if input.mouse_up {
+            self.state.is_focused = false;
+        } else if input.mouse_down && self.boundary.contains_point(input.mouse_pos) {
+            self.state.is_focused = true;
+        } else if self.state.is_focused {
+            self.boundary.reposition(input.mouse_pos);
+
+            self.prop.x = self.boundary.x;
+            self.prop.y = self.boundary.y;
+
+            self.state.is_dirty = true;
+        }
+
+        dbg!(&self);
     }
 
-    fn render(&self, canvas: &mut Canvas<Window>) {
-        if let Some(texture) = &self.texture && let Some(dst) = self.rect {
-            canvas.copy(texture, None, dst).unwrap();
-        }
+    fn get_id(&self) -> &str {
+        self.id.as_str()
+    }
+
+    fn get_props(&self) -> ComponentProperty {
+        self.prop
+    }
+
+    fn get_state(&self) -> ComponentState {
+        self.state
+    }
+
+    fn get_bounds(&self) -> Rect {
+        self.boundary
     }
 }
 
-impl<'tc> Button<'tc> {
-    pub fn new(texture_creator: &'tc TextureCreator<WindowContext>, x: i32, y: i32, width: u32, height: u32) -> Self {
+impl Button {
+    pub fn new(x: i32, y: i32, width: u32, height: u32) -> Self {
+        let prop = ComponentProperty { x, y, height, width };
+        let boundary = Rect::new(x, y, width, height);
+
         Self {
-            _texture_creator: Some(texture_creator),
-            prop: ComponentProperty { x, y, height, width },
+            prop,
+            boundary,
             ..Default::default()
         }
     }
-    fn build(&mut self, canvas: &mut Canvas<Window>) {
-        let texture_creator = self._texture_creator
-            .expect("Texture creator must be setted");
-
-        if self.rect.is_none() || self.state.is_dirty {
-            self.rect = Some(Rect::new(
-                self.prop.x,
-                self.prop.y,
-                self.prop.width,
-                self.prop.height,
-            ));
-        }
-
-        if self.texture.is_none() || self.state.is_dirty {
-            let (w, h) = (self.prop.width, self.prop.height);
-
-            let mut texture = texture_creator
-                .create_texture_target(PixelFormatEnum::RGBA8888, w, h)
-                .expect("failed to create button texture");
-
-            canvas.with_texture_canvas(&mut texture, |tc| {
-                // fundo
-                tc.set_draw_color(Color::RGB(255, 0, 0));
-                tc.clear();
-
-                // borda
-                tc.set_draw_color(Color::RGB(0, 0, 0));
-                tc.draw_rect(Rect::new(0, 0, w, h)).unwrap();
-            }).expect("failed to render button to texture");
-
-            self.texture = Some(texture);
-        }
-
-        self.state.is_dirty = false;
-    }
 }
 
-// #[derive(Default)]
-// pub struct Text {
-//     prop: ComponentProperty,
-//     state: ComponentState,
-// }
-
-// impl Component for Text {
-//     fn render(&self, _canvas: &mut Canvas<Window>) {
-//         // TODO
-//     }
-// }
-
-// #[derive(Default)]
-// pub struct Circle {
-//     prop: ComponentProperty,
-//     state: ComponentState,
-// }
-
-// impl Component for Circle {
-//     fn render(&self, _canvas: &mut Canvas<Window>) {
-//         // TODO
-//     }
-// }
-
-// struct Layout {
-//     // TODO
-// }
-
-pub struct Scene<'tc> {
-    pub components: Vec<Rc<RefCell<dyn Component + 'tc>>>,
+pub struct Scene {
+    pub components: Vec<Rc<RefCell<dyn Component>>>,
 }
 
-pub struct Renderer {
+pub struct Renderer<'tc> {
     canvas: Rc<RefCell<Canvas<Window>>>,
+    texture_manager: TextureManager<'tc>,
 }
 
-impl Renderer {
-    pub fn new(canvas: Rc<RefCell<Canvas<Window>>>) -> Self {
-        Self { canvas }
+impl<'tc> Renderer<'tc> {
+    pub fn new(canvas: Rc<RefCell<Canvas<Window>>>, texture_manager: TextureManager<'tc>) -> Self {
+        Self {
+            canvas,
+            texture_manager,
+        }
     }
 
-    fn clear(&self) {
+    fn clear(&mut self) {
         let mut canvas = self.canvas.borrow_mut();
         canvas.set_draw_color(Color::GREY);
         canvas.clear();
     }
 
-    pub fn render(
-        &self,
-        scene: &Scene,
-    ) {
+    pub fn render(&mut self, scene: &Scene, input: Input) {
         self.clear();
 
         let mut canvas = self.canvas.borrow_mut();
-
         for component_ref in scene.components.iter() {
             let mut c = component_ref.borrow_mut();
-            c.update(&mut canvas);
-            c.render(&mut canvas);
+            c.update(input);
+
+            let component_state = c.get_state();
+            if component_state.is_enabled {
+                let component_id = c.get_id();
+                if component_state.is_dirty {
+                    self.texture_manager.drop_texture(component_id);
+                }
+
+                let component_property = c.get_props();
+                let texture = match self.texture_manager.get_texture(component_id) {
+                    Some(texture) => texture,
+                    None => self.texture_manager.create_texture(
+                        component_id,
+                        component_property.width,
+                        component_property.height,
+                        &mut canvas
+                    )
+                };
+
+                canvas.copy(texture, None, c.get_bounds())
+                    .expect(format!("Could not render texture for component ID: {}", component_id).as_str());
+            }
         }
 
         canvas.present();
     }
 }
-
-// fn draw_on_mouse_button_clicked(app_state: &AppState) {
-//     let mut canvas = app_state.canvas.borrow_mut();
-
-//     if app_state.mouse_pressed {
-//         let center = Rect::from_center(
-//             app_state.mouse_position.clone(),
-//             10,
-//             10
-//         );
-
-//         canvas.set_draw_color(Color::RGB(0, 0, 255));
-//         let radius = 10;
-//         let r2 = radius * radius;
-//         for dy in -radius..=radius {
-//             let dx = ((r2 - dy * dy) as f64).sqrt() as i32;
-//             let y = center.y + dy;
-//             let x1 = center.x - dx;
-//             let x2 = center.x + dx;
-//             canvas.draw_line(Point::new(x1, y), Point::new(x2, y)).unwrap();
-//         }
-//     }
-// }
