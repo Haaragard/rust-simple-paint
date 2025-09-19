@@ -2,11 +2,10 @@ use std::{cell::RefCell, rc::Rc};
 
 use sdl2::{event::Event, keyboard::Keycode, mouse::MouseButton, rect::Point, render::{Canvas}, video::{Window}, Sdl, VideoSubsystem};
 
-use crate::ui::{Renderer, TextureManager, UiEvent};
+use crate::ui::{Renderer, TextureManager};
 
 pub struct AppState {
     pub canvas: Rc<RefCell<Canvas<Window>>>,
-    pub _ui_events: Rc<RefCell<Vec<UiEvent>>>,
 
     scenes: Rc<RefCell<Vec<crate::ui::Scene>>>,
     active_scene: u32,
@@ -14,13 +13,10 @@ pub struct AppState {
 
 impl AppState {
     pub fn new(canvas: Rc<RefCell<Canvas<Window>>>) -> Self {
-        let ui_events = Rc::new(RefCell::new(Vec::<crate::ui::UiEvent>::new()));
         let scenes = Rc::new(RefCell::new(Vec::<crate::ui::Scene>::new()));
 
         Self {
             canvas,
-            _ui_events: ui_events,
-
             scenes,
             active_scene: 0,
         }
@@ -118,7 +114,6 @@ pub struct Input {
     pub mouse_pos: Point,
     pub mouse_down: bool,
     pub mouse_up: bool,
-    pub mouse_held: bool,
 }
 
 impl Default for Input {
@@ -127,7 +122,6 @@ impl Default for Input {
             mouse_pos: Point::new(0, 0),
             mouse_down: false,
             mouse_up: false,
-            mouse_held: false,
         }
     }
 }
