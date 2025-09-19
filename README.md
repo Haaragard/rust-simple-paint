@@ -25,6 +25,10 @@ Esta aplicação permite criar desenhos básicos em uma tela usando SDL2 para re
 - Gerenciamento de texturas com cache
 - Loop de eventos básico para interação
 
+## Licença
+
+Este projeto está licenciado sob a [MIT License](LICENSE). Veja o arquivo LICENSE para mais detalhes.
+
 ## Contribuição
 
 Não está aberto para contribuições.
